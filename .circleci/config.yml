@@ -1,0 +1,59 @@
+version: 2.1
+
+orbs:
+  aws-cli: circleci/aws-cli@3.1.4
+
+references:
+
+  aws_config: &aws_config
+    run:
+      name: Assume role and save credentials
+      command: |
+        # Assume role and store credentials in environment variables
+        ROLE_ARN=arn:aws:iam::394874441285:role/admin-beanstalk-role
+        CREDS=$(aws sts assume-role --role-arn $ROLE_ARN --role-session-name CircleCI --duration-seconds 900 --output json)
+        export AWS_ACCESS_KEY_ID=$(echo $CREDS | jq -r '.Credentials.AccessKeyId')
+        export AWS_SECRET_ACCESS_KEY=$(echo $CREDS | jq -r '.Credentials.SecretAccessKey')
+        export AWS_SESSION_TOKEN=$(echo $CREDS | jq -r '.Credentials.SessionToken')
+        export TOKEN_DURATION_VALIDITY=$(echo $CREDS | jq -r '.Credentials.Expiration')
+
+
+        # Store credentials in CircleCI parameters
+        echo "export AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID" >> $BASH_ENV
+        echo "export AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY" >> $BASH_ENV
+        echo "export AWS_SESSION_TOKEN=$AWS_SESSION_TOKEN" >> $BASH_ENV
+        echo "export AWS_DEFAULT_REGION=${AWS_REGION}" >> $BASH_ENV
+
+        # Print out datetime when generated AWS keys and sts token will expire
+        echo "This key session will expire on:" 
+        echo "$TOKEN_DURATION_VALIDITY"
+
+
+
+
+  aws_cli_create_eb_app: &aws_cli_create_eb_app
+    run:
+      name: Run AWS CLI create application
+      command: |
+        aws  elasticbeanstalk create-application --application-name My-first-app
+
+
+jobs:
+  spin-eb-app:
+    executor: aws-cli/default
+    steps:   
+       - checkout 
+       - aws-cli/setup
+       - *aws_config
+       - *aws_cli_create_eb_app
+   
+
+workflows:
+  version: 2
+  spin-eb-app:
+    jobs:
+      - spin-eb-app:
+          filters:
+            branches:
+              only:
+                - main
